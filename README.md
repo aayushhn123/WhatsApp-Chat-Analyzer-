@@ -1,6 +1,7 @@
 # WhatsApp Chat Analyzer
 
-Live at: https://whatsappchatanaly.streamlit.app/
+Streamlit link: https://whatsappproanalyze.streamlit.app/
+AWS cloud hosted link: http://13.49.125.74:8501/
 
 ## How to use
 1. Open WhatsApp
@@ -10,3 +11,4 @@ Live at: https://whatsappchatanaly.streamlit.app/
 
 
 Made with love by Aayush Nayak
+
