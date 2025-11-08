@@ -211,6 +211,6 @@ if uploaded_file:
 
 else:
     st.info("Upload a WhatsApp chat file to begin analysis")
-    st.markdown("### Example PDF Output")
-    st.image("https://i.imgur.com/9XjK8pL.png", caption="This is how your PDF will look!")
+    
+
 
