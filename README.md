@@ -1,11 +1,12 @@
 # WhatsApp Chat Analyzer
 
-Live at: https://whatsapp-chat-analyzer.streamlit.app
+Live at: https://whatsappchatanaly.streamlit.app/
 
 ## How to use
 1. Open WhatsApp
 2. Open any chat → Tap name → Export chat → Without media
 3. Upload the .txt file here
 4. Laugh at your friends
+
 
 Made with love by Aayush Nayak
