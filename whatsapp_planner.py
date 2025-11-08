@@ -1,8 +1,7 @@
-# app.py - WhatsApp Chat Analyzer PRO v5 (Perfect PDF + User Guide + iPhone Export Fix)
+# app.py - WhatsApp Analyzer PRO v6 (iPhone + Android + 100% Working)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from collections import Counter
 import emoji
 from wordcloud import WordCloud
@@ -12,64 +11,87 @@ from datetime import datetime
 import base64
 from io import BytesIO
 
-# PDF Libraries
+# PDF
 from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 
-st.set_page_config(page_title="WhatsApp Analyzer PRO", page_icon="Chart", layout="wide")
+st.set_page_config(page_title="WhatsApp Analyzer PRO", page_icon="WhatsApp", layout="wide")
 
-# === CUSTOM CSS ===
+# CSS
 st.markdown("""
 <style>
     .big-font {font-size:50px !important; font-weight:bold; color:#FF6B6B;}
-    .step-box {background-color:#262730; padding:15px; border-radius:10px; border-left:5px solid #FF6B6B;}
-    .header {font-size:24px; color:#4ECDC4; font-weight:bold;}
+    .step-box {background-color:#262730; padding:20px; border-radius:12px; border-left:6px solid #FF6B6B;}
+    .header {font-size:22px; color:#4ECDC4; font-weight:bold;}
 </style>
 """, unsafe_allow_html=True)
 
-# === TITLE ===
 st.markdown('<p class="big-font">WhatsApp Chat Analyzer PRO</p>', unsafe_allow_html=True)
-st.markdown("**Made with love** • Get deep insights • Download stunning PDF")
+st.markdown("**Works with iPhone & Android exports • Made by  Nayak**")
 
-# === HOW TO EXPORT GUIDE (BEAUTIFUL) ===
-with st.expander("How to Export Chat from WhatsApp (30 seconds)", expanded=True):
+# GUIDE
+with st.expander("How to Export Chat (iPhone & Android)", expanded=True):
     st.markdown("""
     <div class="step-box">
-    <p class="header">Step 1</p>
-    Open WhatsApp → Open any chat/group → Tap name at top<br>
-    <p class="header">Step 2</p>
-    Scroll down → Tap <strong>"Export chat"</strong><br>
-    <p class="header">Step 3</p>
-    Choose <strong>"Without Media"</strong> (very important!)<br>
-    <p class="header">Step 4</p>
-    Save the <code>WhatsApp Chat.txt</code> file → Upload below!
+    <p class="header">Step 1</p> Open WhatsApp → Open chat → Tap name at top<br>
+    <p class="header">Step 2</p> Scroll → <strong>Export chat</strong><br>
+    <p class="header">Step 3</p> Choose <strong>Without Media</strong><br>
+    <p class="header">Step 4</p> Save → Upload here!
     </div>
     """, unsafe_allow_html=True)
 
-# === FILE UPLOADER ===
-uploaded_file = st.file_uploader("**Upload your WhatsApp Chat.txt file here**", type="txt")
+uploaded_file = st.file_uploader("**Upload your WhatsApp chat.txt**", type="txt")
 
-# === PARSING FUNCTION (UPDATED FOR IPHONE 24-HOUR FORMAT) ===
-def parse_chat(data):
-    # Updated regex for iPhone export: [DD/MM/YY, HH:MM:SS] User: Message
-    pattern = r'\[(\d{1,2}/\d{1,2}/\d{2,4}, \d{1,2}:\d{2}:\d{2})\] (.*?): (.*)'
-    matches = re.findall(pattern, data)
+def parse_whatsapp_chat(text):
+    # SUPPORTS BOTH FORMATS
+    patterns = [
+        # iPhone: [08/06/25, 19:48:10] Leisha: hello
+        r'\[(\d{1,2}/\d{1,2}/\d{2,4}, \d{1,2}:\d{2}:\d{2})\] (.*?): (.*)',
+        # Android: 08/06/25, 7:48 PM - Leisha: hello
+        r'(\d{1,2}/\d{1,2}/\d{2,4}, \d{1,2}:\d{2} [APMapm]{2}) - (.*?): (.*)'
+    ]
     
     dates, users, messages = [], [], []
-    for match in matches:
-        dt_str, user, msg = match[0], match[1], match[2]
-        for fmt in ("%d/%m/%y, %H:%M:%S", "%m/%d/%y, %H:%M:%S", "%d/%m/%Y, %H:%M:%S", "%m/%d/%Y, %H:%M:%S"):
-            try:
-                dt = datetime.strptime(dt_str, fmt)
-                dates.append(dt); users.append(user); messages.append(msg)
-                break
-            except:
-                continue
     
-    df = pd.DataFrame({"date": dates, "user": users, "message": messages})
+    for line in text.split('\n'):
+        line = line.strip()
+        if not line: continue
+            
+        matched = False
+        for pattern in patterns:
+            match = re.match(pattern, line)
+            if match:
+                date_str, user, msg = match.groups()
+                # Parse date
+                for fmt in (
+                    "%d/%m/%y, %H:%M:%S", "%m/%d/%y, %H:%M:%S",
+                    "%d/%m/%Y, %H:%M:%S", "%m/%d/%Y, %H:%M:%S",
+                    "%d/%m/%y, %I:%M %p", "%m/%d/%y, %I:%M %p"
+                ):
+                    try:
+                        dt = datetime.strptime(date_str, fmt)
+                        dates.append(dt)
+                        users.append(user.strip())
+                        messages.append(msg.strip())
+                        matched = True
+                        break
+                    except:
+                        continue
+                if matched: break
+        if matched: continue
+            
+        # Handle multi-line messages
+        if dates and users and messages:
+            messages[-1] += " " + line
+
+    if not dates:
+        return None
+        
+    df = pd.DataFrame({'date': dates, 'user': users, 'message': messages})
+    df['date'] = pd.to_datetime(df['date'])  # ← THIS FIXES THE .dt ERROR
     df['hour'] = df['date'].dt.hour
     df['time_12h'] = df['date'].dt.strftime("%I:%M %p")
     df['day'] = df['date'].dt.day_name()
@@ -84,46 +106,39 @@ def parse_chat(data):
     
     df['part_of_day'] = df['hour'].apply(part)
     df['emoji'] = df['message'].apply(lambda x: ''.join(c for c in x if c in emoji.EMOJI_DATA))
+    
     return df
 
-# === PDF GENERATOR (NOW WITH TEXT & CAPTIONS) ===
-def create_pdf_report(df, figs):
+# PDF Generator
+def create_pdf(df, figs):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*inch)
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='Center', alignment=1, fontSize=18, textColor=colors.HexColor('#FF6B6B')))
-    styles.add(ParagraphStyle(name='Caption', fontSize=12, textColor=colors.grey, alignment=1))
+    styles.add(ParagraphStyle(name='Caption', fontSize=11, textColor=colors.grey, alignment=1))
     
     story = []
     story.append(Paragraph("WhatsApp Chat Analysis Report", styles['Title']))
-    story.append(Paragraph("Generated by WhatsApp Analyzer PRO", styles['Center']))
+    story.append(Paragraph("Generated by  Nayak", styles['Center']))
     story.append(Spacer(1, 20))
     
-    # Summary Table
-    data = [
+    # Summary
+    summary = [
         ["Total Messages", f"{len(df):,}"],
-        ["Active Users", f"{df['user'].nunique()}"],
-        ["Most Active", df['user'].value_counts().index[0]],
+        ["Participants", df['user'].nunique()],
+        ["Most Active", df['user'].value_counts().iloc[0]],
         ["Duration", f"{(df['date'].max() - df['date'].min()).days} days"],
-        ["Avg Messages/Day", f"{int(len(df)/df['date_only'].nunique())}"]
+        ["Avg/Day", f"{int(len(df)/df['date_only'].nunique())}"]
     ]
-    table = Table(data, colWidths=[3*inch, 2*inch])
-    table.setStyle([('BACKGROUND', (0,0), (-1,0), colors.HexColor('#262730')),
-                    ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                    ('GRID', (0,0), (-1,-1), 1, colors.lightgrey)])
+    table = Table(summary, colWidths=[3*inch, 2*inch])
+    table.setStyle([('GRID', (0,0), (-1,-1), 1, colors.lightgrey),
+                    ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#262730')),
+                    ('TEXTCOLOR', (0,0), (-1,0), colors.white)])
     story.append(table)
     story.append(Spacer(1, 30))
     
-    # Add plots with captions
-    captions = [
-        "Top 10 Most Active Users",
-        "Most Active Time of Day",
-        "Peak Hours (12-Hour Format)",
-        "Top 10 Emojis Used",
-        "Word Cloud - Most Used Words"
-    ]
-    
-    for i, (fig, cap) in enumerate(zip(figs, captions)):
+    captions = ["Top 10 Active Users", "Active Time of Day", "Peak Hours", "Top Emojis", "Word Cloud"]
+    for fig, cap in zip(figs, captions):
         img_data = BytesIO()
         if hasattr(fig, 'write_image'):
             fig.write_image(img_data, format="PNG", width=1000, height=600)
@@ -131,7 +146,6 @@ def create_pdf_report(df, figs):
             fig.savefig(img_data, format='PNG', bbox_inches='tight', dpi=150)
             plt.close()
         img_data.seek(0)
-        
         story.append(Image(img_data, width=6.5*inch, height=4*inch))
         story.append(Paragraph(cap, styles['Caption']))
         story.append(Spacer(1, 20))
@@ -139,53 +153,49 @@ def create_pdf_report(df, figs):
     doc.build(story)
     return buffer.getvalue()
 
-# === MAIN ANALYSIS ===
+# MAIN
 if uploaded_file:
-    data = uploaded_file.read().decode("utf-8", errors="ignore")
-    df = parse_chat(data)
+    raw_text = uploaded_file.read().decode("utf-8", errors="ignore")
+    df = parse_whatsapp_chat(raw_text)
     
-    if len(df) == 0:
-        st.error("No messages found! Make sure you exported WITHOUT media and try again.")
+    if df is None or len(df) == 0:
+        st.error("No messages found! Make sure you exported WITHOUT media.")
         st.stop()
     
-    st.success(f"Successfully analyzed {len(df):,} messages from {df['user'].nunique()} users!")
+    st.success(f"Analyzed {len(df):,} messages from {df['user'].nunique()} people!")
 
     # Metrics
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Messages", f"{len(df):,}")
-    c2.metric("Most Active", df['user'].value_counts().head(1).index[0])
-    c3.metric("Duration", f"{(df['date'].max()-df['date'].min()).days} days")
-    c4.metric("Avg/Day", f"{int(len(df)/df['date_only'].nunique())}")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Messages", f"{len(df):,}")
+    col2.metric("Most Active", df['user'].value_counts().head(1).index[0])
+    col3.metric("Duration", f"{(df['date'].max()-df['date'].min()).days} days")
+    col4.metric("Avg/Day", f"{int(len(df)/df['date_only'].nunique())}")
 
-    # === CHARTS WITH LABELS ===
-    st.markdown("### Top 10 Most Active Users")
+    # Charts
+    st.markdown("### Top 10 Active Users")
     top10 = df['user'].value_counts().head(10)
-    fig1 = px.bar(y=top10.index, x=top10.values, orientation='h', text=top10.values,
-                  color=top10.values, color_continuous_scale="Viridis")
+    fig1 = px.bar(y=top10.index, x=top10.values, orientation='h', text=top10.values)
     fig1.update_traces(textposition='outside')
-    fig1.update_layout(height=500, showlegend=False)
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.markdown("### Most Active Part of Day")
+    st.markdown("### Active Time of Day")
     part_counts = df['part_of_day'].value_counts()
-    fig2 = px.pie(values=part_counts.values, names=part_counts.index,
-                  color_discrete_sequence=px.colors.sequential.Plasma)
+    fig2 = px.pie(values=part_counts.values, names=part_counts.index)
     fig2.update_traces(textinfo='percent+label+value')
     st.plotly_chart(fig2, use_container_width=True)
 
-    st.markdown("### Peak Hours (12-Hour Format)")
+    st.markdown("### Peak Hours (12-Hour)")
     hour_counts = df['time_12h'].value_counts().head(15)
     fig3 = px.bar(x=hour_counts.index, y=hour_counts.values, text=hour_counts.values)
     fig3.update_traces(textposition='outside')
-    fig3.update_layout(height=500)
     st.plotly_chart(fig3, use_container_width=True)
 
     st.markdown("### Word Cloud")
     text = " ".join(df['message']).lower()
-    wordcloud = WordCloud(width=1000, height=500, background_color='#0E1117',
-                          colormap='plasma', stopwords={'media','omitted','deleted','image','video'}).generate(text)
+    wc = WordCloud(width=1000, height=500, background_color='#0E1117', colormap='plasma',
+                   stopwords={'omitted','deleted','image','video','media'}).generate(text)
     plt.figure(figsize=(12,6), facecolor='#0E1117')
-    plt.imshow(wordcloud)
+    plt.imshow(wc)
     plt.axis('off')
     wordcloud_fig = plt
     st.pyplot(plt)
@@ -193,22 +203,22 @@ if uploaded_file:
     st.markdown("### Top 10 Emojis")
     all_emojis = "".join(df['emoji'])
     if all_emojis:
-        top_em = Counter(all_emojis).most_common(10)
-        edf = pd.DataFrame(top_em, columns=['Emoji', 'Count'])
-        fig4 = px.bar(edf, x='Emoji', y='Count', text='Count', color='Count')
+        top_emoji = Counter(all_emojis).most_common(10)
+        edf = pd.DataFrame(top_emoji, columns=['Emoji', 'Count'])
+        fig4 = px.bar(edf, x='Emoji', y='Count', text='Count')
         fig4.update_traces(textposition='outside')
         st.plotly_chart(fig4, use_container_width=True)
 
-    # === PDF EXPORT BUTTON ===
-    if st.button("Export Full Report as PDF (with headings & captions)", type="primary"):
-        with st.spinner("Generating professional PDF report..."):
+    # PDF Button
+    if st.button("Download Full Report as PDF", type="primary"):
+        with st.spinner("Creating PDF..."):
             figs = [fig1, fig2, fig3, fig4, wordcloud_fig]
-            pdf_data = create_pdf_report(df, figs)
-            b64 = base64.b64encode(pdf_data).decode()
-            href = f'<a href="data:application/pdf;base64,{b64}" download="WhatsApp_Chat_Report.pdf">Download Your Professional PDF Report</a>'
+            pdf = create_pdf(df, figs)
+            b64 = base64.b64encode(pdf).decode()
+            href = f'<a href="data:application/pdf;base64,{b64}" download="WhatsApp_Report_.pdf">Download PDF Now</a>'
             st.markdown(href, unsafe_allow_html=True)
             st.balloons()
-            st.success("PDF Ready! Click above to download")
+            st.success("PDF Ready!")
 
 else:
-    st.info("Upload a WhatsApp chat file to begin analysis")
+    st.info("Upload your WhatsApp chat.txt to start")
