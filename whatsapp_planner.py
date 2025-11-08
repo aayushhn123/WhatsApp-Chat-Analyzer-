@@ -1,102 +1,166 @@
-# app.py - WhatsApp Chat Analyzer 2025 FIXED VERSION
+# app.py - ULTIMATE WhatsApp Chat Analyzer 2025+ (PDF Export + Time Labels)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from collections import Counter
 import emoji
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import re
 from datetime import datetime
+import base64
+from io import BytesIO
 
-st.set_page_config(page_title="WhatsApp Chat Analyzer 2025", page_icon="WhatsApp", layout="centered")
+# PDF Generation
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
 
-st.title("WhatsApp Chat Analyzer 2025")
-st.caption("Works with NEW WhatsApp export format (July 2025+)")
+st.set_page_config(page_title="WhatsApp Analyzer Pro", page_icon="Chart", layout="wide")
 
-uploaded_file = st.file_uploader("Upload WhatsApp Chat.txt", type="txt")
+# Title
+st.title("WhatsApp Chat Analyzer Pro")
+st.markdown("**Export chats → Get deep insights → Download PDF report**")
+
+# File uploader
+uploaded_file = st.file_uploader("Upload WhatsApp Chat.txt (export without media)", type="txt")
+
+def parse_chat(data):
+    pattern = r'(\d{1,2}/\d{1,2}/\d{2,4}, \d{1,2}:\d{2}\s?[APMapm]{2}) - (.*?): (.*)'
+    matches = re.findall(pattern, data)
+    
+    dates, users, messages = [], [], []
+    for match in matches:
+        dt_str = match[0]
+        user = match[1]
+        msg = match[2]
+        
+        try:
+            dt = datetime.strptime(dt_str, "%m/%d/%y, %I:%M %p")
+        except:
+            try:
+                dt = datetime.strptime(dt_str, "%d/%m/%y, %I:%M %p")
+            except:
+                continue
+        
+        dates.append(dt)
+        users.append(user)
+        messages.append(msg)
+    
+    df = pd.DataFrame({"date": dates, "user": users, "message": messages})
+    df['hour'] = df['date'].dt.hour
+    df['time_12h'] = df['date'].dt.strftime("%I:%M %p")
+    df['day'] = df['date'].dt.day_name()
+    df['date_only'] = df['date'].dt.date
+    
+    # Part of day
+    def get_part_of_day(h):
+        if 5 <= h < 12:
+            return "Morning (5AM-12PM)"
+        elif 12 <= h < 17:
+            return "Afternoon (12PM-5PM)"
+        elif 17 <= h < 21:
+            return "Evening (5PM-9PM)"
+        else:
+            return "Night (9PM-5AM)"
+    
+    df['part_of_day'] = df['hour'].apply(get_part_of_day)
+    df['emoji'] = df['message'].apply(lambda x: ''.join(c for c in x if c in emoji.EMOJI_DATA))
+    
+    return df
+
+def create_pdf_report(df, figs):
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
+    
+    story.append(Paragraph("WhatsApp Chat Analysis Report", styles['Title']))
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(f"Total Messages: {len(df):,}", styles['Normal']))
+    story.append(Paragraph(f"Active Users: {df['user'].nunique()}", styles['Normal']))
+    story.append(Paragraph(f"Duration: {(df['date'].max() - df['date'].min()).days} days", styles['Normal']))
+    story.append(Spacer(1, 20))
+    
+    for i, fig in enumerate(figs):
+        img_data = BytesIO()
+        fig.write_image(img_data, format="PNG")
+        img_data.seek(0)
+        story.append(Image(img_data, width=500, height=300))
+        story.append(Spacer(1, 12))
+    
+    doc.build(story)
+    return buffer.getvalue()
 
 if uploaded_file:
-    with st.spinner("Parsing your chaotic group chat..."):
-        data = uploaded_file.read().decode("utf-8", errors="ignore")
-
-        # NEW 2025 REGEX - WORKS 100%
-        pattern = r'(\d{1,2}/\d{1,2}/\d{2,4}, \d{1,2}:\d{2}\s?[APMapm]{2}) - (.*?): (.*)'
-        matches = re.findall(pattern, data)
-
-        if not matches:
-            st.error("No messages found! Did you export WITHOUT media? Try again.")
-            st.stop()
-
-        dates = []
-        users = []
-        messages = []
-
-        for match in matches:
-            date_time = match[0]
-            user = match[1]
-            message = match[2]
+    data = uploaded_file.read().decode("utf-8", errors="ignore")
+    df = parse_chat(data)
+    
+    if len(df) == 0:
+        st.error("No messages found! Make sure you exported chat WITHOUT media.")
+        st.stop()
+    
+    st.success(f"Analyzed {len(df):,} messages from {df['user'].nunique()} users!")
+    
+    # Metrics
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total Messages", f"{len(df):,}")
+    col2.metric("Most Active", df['user'].value_counts().head(1).index[0])
+    col3.metric("Duration", f"{(df['date'].max() - df['date'].min()).days} days")
+    col4.metric("Avg/Day", f"{int(len(df)/df['date_only'].nunique())}")
+    
+    # === CHARTS WITH LABELS ===
+    st.subheader("Most Active Users")
+    top10 = df['user'].value_counts().head(10)
+    fig1 = px.bar(y=top10.index, x=top10.values, orientation='h',
+                  text=top10.values, color=top10.values)
+    fig1.update_traces(textposition='outside')
+    fig1.update_layout(height=500, xaxis_title="Messages", yaxis_title="")
+    st.plotly_chart(fig1, use_container_width=True)
+    
+    st.subheader("Most Active Time of Day")
+    part_counts = df['part_of_day'].value_counts()
+    fig2 = px.pie(values=part_counts.values, names=part_counts.index,
+                  color_discrete_sequence=px.colors.sequential.Plasma)
+    fig2.update_traces(textinfo='percent+label+value')
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    st.subheader("Peak Hours (12-Hour Format)")
+    hour_counts = df['time_12h'].value_counts().head(15)
+    fig3 = px.bar(x=hour_counts.index, y=hour_counts.values,
+                  text=hour_counts.values, color=hour_counts.values)
+    fig3.update_traces(textposition='outside')
+    fig3.update_layout(xaxis_title="Time", yaxis_title="Messages", height=500)
+    st.plotly_chart(fig3, use_container_width=True)
+    
+    st.subheader("Word Cloud")
+    text = " ".join(df['message']).lower()
+    wordcloud = WordCloud(width=800, height=400, background_color='black',
+                          stopwords={'media', 'omitted', 'image', 'video', 'deleted'}).generate(text)
+    plt.figure(figsize=(10,5))
+    plt.imshow(wordcloud)
+    plt.axis('off')
+    wordcloud_fig = plt
+    st.pyplot(plt)
+    
+    st.subheader("Top Emojis")
+    all_emojis = "".join(df['emoji'])
+    if all_emojis:
+        top_emojis = Counter(all_emojis).most_common(10)
+        emoji_df = pd.DataFrame(top_emojis, columns=['Emoji', 'Count'])
+        fig4 = px.bar(emoji_df, x='Emoji', y='Count', text='Count', color='Count')
+        fig4.update_traces(textposition='outside')
+        st.plotly_chart(fig4, use_container_width=True)
+    
+    # === PDF EXPORT ===
+    if st.button("Export Full Report as PDF"):
+        with st.spinner("Generating PDF..."):
+            figs = [fig1, fig2, fig3, fig4]
+            pdf_data = create_pdf_report(df, figs)
             
-            # Fix 12-hour format
-            try:
-                parsed_date = datetime.strptime(date_time, "%m/%d/%y, %I:%M %p")
-            except:
-                try:
-                    parsed_date = datetime.strptime(date_time, "%d/%m/%y, %I:%M %p")
-                except:
-                    parsed_date = datetime.now()
-            
-            dates.append(parsed_date)
-            users.append(user)
-            messages.append(message)
-
-        df = pd.DataFrame({
-            "date": dates,
-            "user": users,
-            "message": messages
-        })
-
-        df['hour'] = df['date'].dt.hour
-        df['day'] = df['date'].dt.day_name()
-        df['emoji'] = df['message'].apply(lambda x: ''.join(c for c in x if c in emoji.EMOJI_DATA))
-
-        # SUCCESS!
-        st.success(f"Found {len(df):,} messages from {df['user'].nunique()} people!")
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("Total Messages", f"{len(df):,}")
-        col2.metric("Most Active", df['user'].value_counts().index[0])
-        col3.metric("Duration", f"{(df['date'].max() - df['date'].min()).days} days")
-        col4.metric("Avg/Day", f"{int(len(df)/(df['date'].dt.date.nunique() or 1))}")
-
-        # Top 10
-        st.subheader("Top 10 Spammers")
-        top10 = df['user'].value_counts().head(10)
-        fig = px.bar(y=top10.index, x=top10.values, orientation='h', color=top10.values)
-        st.plotly_chart(fig, use_container_width=True)
-
-        # Peak hours
-        st.subheader("When do you chat?")
-        hours = df['hour'].value_counts().sort_index()
-        fig2 = px.line(x=hours.index, y=hours.values, markers=True)
-        fig2.update_layout(xaxis=dict(tick0=0, dtick=1), xaxis_title="Hour", yaxis_title="Messages")
-        st.plotly_chart(fig2, use_container_width=True)
-
-        # Word Cloud
-        st.subheader("Most Used Words")
-        text = " ".join(df['message']).lower()
-        wordcloud = WordCloud(width=800, height=400, background_color='black',
-                              stopwords={'media', 'omitted', 'image', 'video', 'this message was deleted'}).generate(text)
-        plt.figure(figsize=(10,5))
-        plt.imshow(wordcloud)
-        plt.axis('off')
-        st.pyplot(plt)
-
-        # Emojis
-        st.subheader("Emoji Leaderboard")
-        all_emojis = "".join(df['emoji'])
-        if all_emojis:
-            top_emojis = Counter(all_emojis).most_common(10)
-            emoji_df = pd.DataFrame(top_emojis, columns=['Emoji', 'Count'])
-            fig3 = px.bar(emoji_df, x='Emoji', y='Count', color='Count')
-            st.plotly_chart(fig3, use_container_width=True)
+            b64 = base64.b64encode(pdf_data).decode()
+            href = f'<a href="data:application/pdf;base64,{b64}" download="WhatsApp_Analysis_Report.pdf">Download PDF Report</a>'
+            st.markdown(href, unsafe_allow_html=True)
+            st.success("PDF Ready! Click above to download")
