@@ -1,4 +1,4 @@
-# app.py - WhatsApp Chat Analyzer PRO v5 (Perfect PDF + User Guide)
+# app.py - WhatsApp Chat Analyzer PRO v6 (Android + iPhone Support)
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -19,7 +19,7 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 
-st.set_page_config(page_title="WhatsApp Analyzer PRO", page_icon="Chart", layout="wide")
+st.set_page_config(page_title="WhatsApp Analyzer PRO", page_icon="📊", layout="wide")
 
 # === CUSTOM CSS ===
 st.markdown("""
@@ -31,11 +31,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # === TITLE ===
-st.markdown('<p class="big-font">WhatsApp Chat Analyzer PRO</p>', unsafe_allow_html=True)
-st.markdown("**Made with love** • Get deep insights • Download stunning PDF")
+st.markdown('<p class="big-font">📱 WhatsApp Chat Analyzer PRO</p>', unsafe_allow_html=True)
+st.markdown("**Works with Android & iPhone** • Get deep insights • Download stunning PDF")
 
-# === HOW TO EXPORT GUIDE (BEAUTIFUL) ===
-with st.expander("How to Export Chat from WhatsApp (30 seconds)", expanded=True):
+# === HOW TO EXPORT GUIDE ===
+with st.expander("📖 How to Export Chat from WhatsApp (30 seconds)", expanded=True):
     st.markdown("""
     <div class="step-box">
     <p class="header">Step 1</p>
@@ -49,24 +49,67 @@ with st.expander("How to Export Chat from WhatsApp (30 seconds)", expanded=True)
     </div>
     """, unsafe_allow_html=True)
 
+# === DEVICE SELECTOR ===
+st.markdown("### Select Your Device Type")
+device_type = st.radio(
+    "Which device did you export the chat from?",
+    options=["Android", "iPhone"],
+    horizontal=True,
+    help="iPhone chats have square brackets like [08/06/25, 19:48:10], Android chats don't"
+)
+
 # === FILE UPLOADER ===
 uploaded_file = st.file_uploader("**Upload your WhatsApp Chat.txt file here**", type="txt")
 
-# === PARSING FUNCTION ===
-def parse_chat(data):
-    pattern = r'(\d{1,2}/\d{1,2}/\d{2,4}, \d{1,2}:\d{2}\s?[APMapm]{2}) - (.*?): (.*)'
-    matches = re.findall(pattern, data)
-    
+# === PARSING FUNCTION (UNIVERSAL) ===
+def parse_chat(data, device):
     dates, users, messages = [], [], []
-    for match in matches:
-        dt_str, user, msg = match[0], match[1], match[2]
-        for fmt in ("%m/%d/%y, %I:%M %p", "%d/%m/%y, %I:%M %p", "%m/%d/%Y, %I:%M %p"):
-            try:
-                dt = datetime.strptime(dt_str, fmt)
-                dates.append(dt); users.append(user); messages.append(msg)
-                break
-            except:
+    
+    if device == "iPhone":
+        # iPhone format: [dd/mm/yy, HH:MM:SS] User: Message
+        pattern = r'\[(\d{1,2}/\d{1,2}/\d{2,4}), (\d{1,2}:\d{2}:\d{2})\] (.*?): (.*)'
+        matches = re.findall(pattern, data)
+        
+        for match in matches:
+            date_str, time_str, user, msg = match[0], match[1], match[2], match[3]
+            
+            # Skip system messages
+            if "Messages and calls are end-to-end encrypted" in msg or "‎" in user:
                 continue
+            
+            # Try different date formats
+            for date_fmt in ["%d/%m/%y", "%m/%d/%y", "%d/%m/%Y", "%m/%d/%Y"]:
+                try:
+                    dt = datetime.strptime(f"{date_str} {time_str}", f"{date_fmt} %H:%M:%S")
+                    dates.append(dt)
+                    users.append(user.strip())
+                    messages.append(msg.strip())
+                    break
+                except:
+                    continue
+    
+    else:  # Android
+        # Android format: dd/mm/yy, HH:MM AM/PM - User: Message
+        pattern = r'(\d{1,2}/\d{1,2}/\d{2,4}), (\d{1,2}:\d{2}\s?[APMapm]{2}) - (.*?): (.*)'
+        matches = re.findall(pattern, data)
+        
+        for match in matches:
+            dt_str, user, msg = match[0] + ", " + match[1], match[2], match[3]
+            
+            for fmt in ["%m/%d/%y, %I:%M %p", "%d/%m/%y, %I:%M %p", 
+                       "%m/%d/%Y, %I:%M %p", "%d/%m/%Y, %I:%M %p",
+                       "%m/%d/%y, %I:%M%p", "%d/%m/%y, %I:%M%p"]:
+                try:
+                    dt = datetime.strptime(dt_str, fmt)
+                    dates.append(dt)
+                    users.append(user.strip())
+                    messages.append(msg.strip())
+                    break
+                except:
+                    continue
+    
+    if len(dates) == 0:
+        return pd.DataFrame()
     
     df = pd.DataFrame({"date": dates, "user": users, "message": messages})
     df['hour'] = df['date'].dt.hour
@@ -85,7 +128,7 @@ def parse_chat(data):
     df['emoji'] = df['message'].apply(lambda x: ''.join(c for c in x if c in emoji.EMOJI_DATA))
     return df
 
-# === PDF GENERATOR (NOW WITH TEXT & CAPTIONS) ===
+# === PDF GENERATOR ===
 def create_pdf_report(df, figs):
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*inch)
@@ -95,7 +138,7 @@ def create_pdf_report(df, figs):
     
     story = []
     story.append(Paragraph("WhatsApp Chat Analysis Report", styles['Title']))
-    story.append(Paragraph("Generated by WhatsApp Analyzer PRO ", styles['Center']))
+    story.append(Paragraph("Generated by WhatsApp Analyzer PRO 📊", styles['Center']))
     story.append(Spacer(1, 20))
     
     # Summary Table
@@ -141,23 +184,27 @@ def create_pdf_report(df, figs):
 # === MAIN ANALYSIS ===
 if uploaded_file:
     data = uploaded_file.read().decode("utf-8", errors="ignore")
-    df = parse_chat(data)
+    df = parse_chat(data, device_type)
     
     if len(df) == 0:
-        st.error("No messages found! Make sure you exported WITHOUT media and try again.")
+        st.error(f"⚠️ No messages found! Please check:")
+        st.warning(f"1. Make sure you selected the correct device type ({device_type})")
+        st.warning("2. Ensure you exported WITHOUT media")
+        st.warning("3. The file should be a .txt file")
+        st.info("💡 Tip: iPhone chats have [square brackets], Android chats don't")
         st.stop()
     
-    st.success(f"Successfully analyzed {len(df):,} messages from {df['user'].nunique()} users!")
+    st.success(f"✅ Successfully analyzed {len(df):,} messages from {df['user'].nunique()} users!")
 
     # Metrics
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Messages", f"{len(df):,}")
-    c2.metric("Most Active", df['user'].value_counts().head(1).index[0])
-    c3.metric("Duration", f"{(df['date'].max()-df['date'].min()).days} days")
-    c4.metric("Avg/Day", f"{int(len(df)/df['date_only'].nunique())}")
+    c1.metric("📨 Total Messages", f"{len(df):,}")
+    c2.metric("🏆 Most Active", df['user'].value_counts().head(1).index[0])
+    c3.metric("📅 Duration", f"{(df['date'].max()-df['date'].min()).days} days")
+    c4.metric("📊 Avg/Day", f"{int(len(df)/df['date_only'].nunique())}")
 
     # === CHARTS WITH LABELS ===
-    st.markdown("### Top 10 Most Active Users")
+    st.markdown("### 📊 Top 10 Most Active Users")
     top10 = df['user'].value_counts().head(10)
     fig1 = px.bar(y=top10.index, x=top10.values, orientation='h', text=top10.values,
                   color=top10.values, color_continuous_scale="Viridis")
@@ -165,21 +212,21 @@ if uploaded_file:
     fig1.update_layout(height=500, showlegend=False)
     st.plotly_chart(fig1, use_container_width=True)
 
-    st.markdown("### Most Active Part of Day")
+    st.markdown("### 🕐 Most Active Part of Day")
     part_counts = df['part_of_day'].value_counts()
     fig2 = px.pie(values=part_counts.values, names=part_counts.index,
                   color_discrete_sequence=px.colors.sequential.Plasma)
     fig2.update_traces(textinfo='percent+label+value')
     st.plotly_chart(fig2, use_container_width=True)
 
-    st.markdown("### Peak Hours (12-Hour Format)")
+    st.markdown("### ⏰ Peak Hours (12-Hour Format)")
     hour_counts = df['time_12h'].value_counts().head(15)
     fig3 = px.bar(x=hour_counts.index, y=hour_counts.values, text=hour_counts.values)
     fig3.update_traces(textposition='outside')
     fig3.update_layout(height=500)
     st.plotly_chart(fig3, use_container_width=True)
 
-    st.markdown("### Word Cloud")
+    st.markdown("### ☁️ Word Cloud")
     text = " ".join(df['message']).lower()
     wordcloud = WordCloud(width=1000, height=500, background_color='#0E1117',
                           colormap='plasma', stopwords={'media','omitted','deleted','image','video'}).generate(text)
@@ -189,7 +236,7 @@ if uploaded_file:
     wordcloud_fig = plt
     st.pyplot(plt)
 
-    st.markdown("### Top 10 Emojis")
+    st.markdown("### 😊 Top 10 Emojis")
     all_emojis = "".join(df['emoji'])
     if all_emojis:
         top_em = Counter(all_emojis).most_common(10)
@@ -197,20 +244,20 @@ if uploaded_file:
         fig4 = px.bar(edf, x='Emoji', y='Count', text='Count', color='Count')
         fig4.update_traces(textposition='outside')
         st.plotly_chart(fig4, use_container_width=True)
+    else:
+        st.info("No emojis found in this chat")
+        fig4 = None
 
     # === PDF EXPORT BUTTON ===
-    if st.button("Export Full Report as PDF (with headings & captions)", type="primary"):
+    if st.button("📥 Export Full Report as PDF", type="primary"):
         with st.spinner("Generating professional PDF report..."):
-            figs = [fig1, fig2, fig3, fig4, wordcloud_fig]
+            figs = [fig1, fig2, fig3, fig4, wordcloud_fig] if fig4 else [fig1, fig2, fig3, wordcloud_fig]
             pdf_data = create_pdf_report(df, figs)
             b64 = base64.b64encode(pdf_data).decode()
-            href = f'<a href="data:application/pdf;base64,{b64}" download="WhatsApp_Chat_Report.pdf">Download Your Professional PDF Report</a>'
+            href = f'<a href="data:application/pdf;base64,{b64}" download="WhatsApp_Chat_Report.pdf">📥 Download Your Professional PDF Report</a>'
             st.markdown(href, unsafe_allow_html=True)
             st.balloons()
-            st.success("PDF Ready! Click above to download")
+            st.success("✅ PDF Ready! Click above to download")
 
 else:
-    st.info("Upload a WhatsApp chat file to begin analysis")
-    
-
-
+    st.info("👆 Select your device type and upload a WhatsApp chat file to begin analysis")
