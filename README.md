@@ -1,7 +1,7 @@
 # WhatsApp Chat Analyzer
 
 **Instant online version (Streamlit):**  
-https://whatsappproanalyze.streamlit.app
+https://whatsappproanalyze.streamlit.app/
 
 **Your own 24×7 AWS cloud version (Fargate - serverless):**  
 http://13.49.125.74:8501/
@@ -115,5 +115,6 @@ docker push YOUR-ACCOUNT.dkr.ecr.eu-north-1.amazonaws.com/whatsapp-analyzer:late
 
 **First load:** 30–40 sec (cold start)  
 **After that:** instant forever
+
 
 
