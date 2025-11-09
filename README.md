@@ -115,3 +115,4 @@ docker push YOUR-ACCOUNT.dkr.ecr.eu-north-1.amazonaws.com/whatsapp-analyzer:late
 
 **First load:** 30–40 sec (cold start)  
 **After that:** instant forever
+
